@@ -1,0 +1,109 @@
+name: build-openssl
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        default: 'latest'
+        description: 'Package version'
+        type: string
+        required: true
+  schedule:
+    # Run once a week on Fridays
+    - cron: "0 0 * * FRI"
+
+jobs:
+  check:
+    runs-on: ubuntu-slim
+    outputs:
+      app_build: ${{ steps.get-version.outputs.build }}
+      app_version: ${{ steps.get-version.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Version
+        id: get-version
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.event.inputs.version }}" = "latest" ]; then
+            app_version=$(curl -s "https://api.github.com/repos/aiortc/aioquic-openssl/releases/latest" | jq -r .tag_name)
+          else
+            app_version=${{ github.event.inputs.version }}
+          fi
+          if [ -z "${app_version}" ] || [ "${app_version}" == "null" ]; then
+            echo "Failed to get version"
+            exit 1
+          fi
+          
+          echo "app_version=${app_version}" >> $GITHUB_ENV
+          echo "app_version=${app_version}" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "========== Build Args =========="
+          echo "app_version=${app_version}"
+
+          gh release view ${app_version} -R ${{ github.repository }} | grep openssl-manylinux-loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    runs-on: ${{ matrix.os }}
+    needs: check
+    if: needs.check.outputs.app_build == '1'
+    env:
+      app_version: ${{ needs.check.outputs.app_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ 'ubuntu-24.04' ]
+        arch: [ 'loongarch64' ]
+        build: [ "manylinux_", "musllinux_" ]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: aiortc/aioquic-openssl
+          ref: ${{ env.app_version }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: docker/setup-qemu-action@v4
+
+      - name: Build OpenSSL
+        uses: loong64/cibuildwheel@v3.4.0
+        env:
+          CIBW_ARCHS: ${{ matrix.arch }}
+          CIBW_BEFORE_BUILD_LINUX: python scripts/build-openssl.py /tmp/vendor
+          CIBW_BUILD: cp39-*
+          CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL RUNNER_ARCH
+          CIBW_TEST_COMMAND: python -c "import dummy"
+
+      - name: Upload OpenSSL
+        uses: actions/upload-artifact@v4
+        with:
+          name: output-${{ matrix.os }}-${{ matrix.arch }}
+          path: wheelhouse/*.tar.gz
+
+  release:
+    runs-on: ubuntu-slim
+    needs: [ check, build ]
+    if: needs.check.outputs.app_build == '1'
+    env:
+      app_version: ${{ needs.check.outputs.app_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download OpenSSL
+        uses: actions/download-artifact@v4
+        with:
+          pattern: output-*
+          path: output
+          merge-multiple: true
+
+      - name: Create a Release on GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.app_version }}
+          tag_name: ${{ env.app_version }}
+          files: output/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
