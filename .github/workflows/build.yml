@@ -40,7 +40,7 @@ jobs:
           echo "========== Build Args =========="
           echo "app_version=${app_version}"
 
-          gh release view ${app_version} -R ${{ github.repository }} | grep openssl-manylinux-loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
+          gh release view ${app_version} -R ${{ github.repository }} | grep openssl-manylinux_loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
