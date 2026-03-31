@@ -18,7 +18,7 @@ jobs:
       app_build: ${{ steps.get-version.outputs.build }}
       app_version: ${{ steps.get-version.outputs.app_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Get Version
         id: get-version
@@ -40,7 +40,7 @@ jobs:
           echo "========== Build Args =========="
           echo "app_version=${app_version}"
 
-          gh release view ${app_version} -R ${{ github.repository }} | grep openssl-manylinux-loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
+          gh release view ${app_version} -R ${{ github.repository }} | grep openssl-manylinux_loongarch64.tar.gz >/dev/null 2>&1 || echo "build=1" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -58,11 +58,11 @@ jobs:
         build: [ "manylinux_", "musllinux_" ]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: aiortc/aioquic-openssl
           ref: ${{ env.app_version }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -73,14 +73,14 @@ jobs:
         env:
           CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_BEFORE_BUILD_LINUX: python scripts/build-openssl.py /tmp/vendor
-          CIBW_BUILD: cp39-*
+          CIBW_BUILD: cp39-${{ matrix.build }}${{ matrix.arch }}
           CIBW_ENVIRONMENT_PASS_LINUX: PIP_EXTRA_INDEX_URL RUNNER_ARCH
           CIBW_TEST_COMMAND: python -c "import dummy"
 
       - name: Upload OpenSSL
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: output-${{ matrix.os }}-${{ matrix.arch }}
+          name: output-${{ matrix.build }}-${{ matrix.arch }}
           path: wheelhouse/*.tar.gz
 
   release:
@@ -90,10 +90,10 @@ jobs:
     env:
       app_version: ${{ needs.check.outputs.app_version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download OpenSSL
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: output-*
           path: output
